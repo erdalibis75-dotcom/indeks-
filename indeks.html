@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Gelir & Gider Takip</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body, #root { height: 100%; background: #0a0a0a; }
+  body { overflow-x: hidden; color: #f0ede8; }
+  input, select { outline: none; border: none; background: none; color: #f0ede8; }
+  ::-webkit-scrollbar { display: none; }
+  .card { background: #1a1a1a; border-radius: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.4); }
+  .btn { cursor: pointer; border: none; font-family: 'Nunito', sans-serif; font-weight: 700; transition: all 0.15s; }
+  .btn:active { transform: scale(0.96); opacity: 0.85; }
+  .slide-up { animation: slideUp 0.3s ease; }
+  @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+  .chip { display:inline-flex; align-items:center; padding:6px 14px; border-radius:50px; font-size:13px; font-weight:700; cursor:pointer; transition: all 0.15s; }
+  .chip:active { transform: scale(0.95); }
+  .tx-row { display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:16px; cursor:pointer; transition: background 0.15s; }
+  .tx-row:active { background: #222222; }
+  .nav-btn { display:flex; flex-direction:column; align-items:center; gap:3px; background:none; border:none; cursor:pointer; padding:8px 20px; font-family:'Nunito',sans-serif; transition: all 0.15s; }
+  .nav-btn:active { transform: scale(0.9); }
+  .input-field { width:100%; background:#222222; border-radius:14px; padding:14px 16px; color:#f0ede8; font-family:'Nunito',sans-serif; font-size:16px; font-weight:600; margin-bottom:12px; }
+  .input-field:focus { outline: 2px solid #7c3aed; }
+  select.input-field option { background: #1a1a1a; color: #f0ede8; }
+  .progress-bar { height:7px; background:#2a2a2a; border-radius:99px; overflow:hidden; }
+  .progress-fill { height:100%; border-radius:99px; transition: width 0.6s ease; }
+  .aud-badge { display:inline-flex; align-items:center; gap:3px; background:#0e2233; border:1px solid #1a4060; border-radius:8px; padding:2px 7px; font-size:11px; font-family:'Space Mono',monospace; color:#5bc4f5; font-weight:700; }
+  .rate-bar { display:flex; align-items:center; gap:8px; padding:8px 16px; background:#1a1a1a; border-radius:12px; box-shadow:0 1px 6px rgba(0,0,0,0.3); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinning { animation: spin 1s linear infinite; display:inline-block; }
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:200; display:flex; align-items:flex-end; }
+  .modal-content { background:#1a1a1a; border-radius:24px 24px 0 0; width:100%; padding:24px 20px 40px; animation: slideUp 0.25s ease; max-height:85vh; overflow-y:auto; }
+  .person-avatar { border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:900; flex-shrink:0; }
+  .person-card-clickable { border-radius:18px; padding:16px; cursor:pointer; transition: transform 0.15s, box-shadow 0.15s; }
+  .person-card-clickable:active { transform: scale(0.97); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+const PEOPLE = ["Erdal", "A.A", "N.A"];
+
+const PC = {
+  "Erdal": { bg:"#f4f6fb", accent:"#1a1a2e", avatar:"#e2e6f0", avatarText:"#1a1a2e", barColor:"#1a1a2e" },
+  "A.A":   { bg:"#f4f6fb", accent:"#1a1a2e", avatar:"#e2e6f0", avatarText:"#1a1a2e", barColor:"#1a1a2e" },
+  "N.A":   { bg:"#f4f6fb", accent:"#1a1a2e", avatar:"#e2e6f0", avatarText:"#1a1a2e", barColor:"#1a1a2e" },
+};
+
+const formatTRY = (n) => new Intl.NumberFormat("tr-TR", { style:"currency", currency:"TRY", maximumFractionDigits:0 }).format(n);
+const formatAUD = (n) => new Intl.NumberFormat("en-AU", { style:"currency", currency:"AUD", maximumFractionDigits:2 }).format(n);
+const formatDate = (d) => new Date(d).toLocaleDateString("tr-TR", { day:"2-digit", month:"short" });
+
+const SAMPLE = [
+  { id:1, type:"income",  person:"Erdal", amount:15000, note:"Mart maaşı",        date:"2026-03-01" },
+  { id:2, type:"expense", person:"Erdal", amount:3500,  note:"Kira",              date:"2026-03-03" },
+  { id:3, type:"expense", person:"A.A",   amount:850,   note:"Market alışverişi", date:"2026-03-05" },
+  { id:4, type:"income",  person:"A.A",   amount:2200,  note:"Freelance proje",   date:"2026-03-07" },
+  { id:5, type:"expense", person:"N.A",   amount:320,   note:"Ulaşım",            date:"2026-03-08" },
+  { id:6, type:"income",  person:"N.A",   amount:5000,  note:"Maaş",              date:"2026-03-09" },
+];
+
+function DonutChart({ income, expense, color }) {
+  const total = income + expense || 1;
+  const incPct = (income / total) * 100;
+  const expPct = (expense / total) * 100;
+  const r = 42, cx = 56, cy = 56, circ = 2 * Math.PI * r;
+  const incDash = (incPct / 100) * circ;
+  const expDash = (expPct / 100) * circ;
+  return (
+    <svg width="112" height="112" viewBox="0 0 112 112">
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#e8eaf0" strokeWidth="14"/>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#34d399" strokeWidth="14"
+        strokeDasharray={`${incDash} ${circ - incDash}`}
+        strokeDashoffset={circ * 0.25} strokeLinecap="round"/>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f87171" strokeWidth="14"
+        strokeDasharray={`${expDash} ${circ - expDash}`}
+        strokeDashoffset={circ * 0.25 - incDash} strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function App() {
+  const [txs, setTxs] = useState(() => {
+    try { const s = localStorage.getItem("txs_v2"); return s ? JSON.parse(s) : SAMPLE; } catch { return SAMPLE; }
+  });
+  const [rate, setRate]       = useState(0.032);
+  const [rateLoading, setRL]  = useState(true);
+  const [rateErr, setRE]      = useState(false);
+  const [rateTime, setRT]     = useState("");
+  const [view, setView]       = useState("home");  // home | add | person | month
+  const [filter, setFilter]   = useState("all");
+  const [monthFilter, setMonthFilter] = useState("all");
+  const [personFilter, setPersonFilter] = useState("all");
+  const [editTx, setEditTx]   = useState(null);
+  const [detailTx, setDetailTx] = useState(null);
+  const [activePerson, setActivePerson] = useState(null);
+  const [personTxFilter, setPersonTxFilter] = useState("all");
+  const [personSearch, setPersonSearch] = useState("");
+
+  const blank = { type:"expense", person:"Erdal", amount:"", note:"", date:new Date().toISOString().split("T")[0] };
+  const [form, setForm] = useState(blank);
+
+  useEffect(() => {
+    try { localStorage.setItem("txs_v2", JSON.stringify(txs)); } catch {}
+  }, [txs]);
+
+  const fetchRate = useCallback(async () => {
+    setRL(true); setRE(false);
+    try {
+      const r = await fetch("https://api.frankfurter.app/latest?from=TRY&to=AUD");
+      const d = await r.json();
+      if (d.rates?.AUD) { setRate(d.rates.AUD); setRT(new Date().toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})); }
+      else throw new Error();
+    } catch { setRE(true); }
+    finally { setRL(false); }
+  }, []);
+
+  useEffect(() => { fetchRate(); }, []);
+
+  const toAUD = (n) => n * rate;
+
+  const totalIncome  = txs.filter(t=>t.type==="income").reduce((s,t)=>s+t.amount,0);
+  const totalExpense = txs.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount,0);
+  const totalBalance = totalIncome - totalExpense;
+
+  const personStats = PEOPLE.map(p => {
+    const inc = txs.filter(t=>t.person===p && t.type==="income").reduce((s,t)=>s+t.amount,0);
+    const exp = txs.filter(t=>t.person===p && t.type==="expense").reduce((s,t)=>s+t.amount,0);
+    return { name:p, income:inc, expense:exp, balance:inc-exp };
+  });
+
+  const filtered = txs
+    .filter(t => filter==="all" || t.type===filter)
+    .filter(t => personFilter==="all" || t.person===personFilter)
+    .sort((a,b) => new Date(b.date)-new Date(a.date));
+
+  const openAdd  = () => { setForm(blank); setEditTx(null); setView("add"); };
+  const openEdit = (t) => { setForm({type:t.type,person:t.person,amount:String(t.amount),note:t.note,date:t.date}); setEditTx(t); setDetailTx(null); setView("add"); };
+  const removeTx = (id) => { setTxs(p=>p.filter(t=>t.id!==id)); setDetailTx(null); };
+  const submit   = () => {
+    if (!form.amount || !form.person) return;
+    const tx = { ...form, amount: parseFloat(form.amount) };
+    if (editTx) setTxs(p=>p.map(t=>t.id===editTx.id ? {...t,...tx} : t));
+    else setTxs(p=>[...p,{...tx,id:Date.now()}]);
+    setForm(blank); setEditTx(null); setView("home");
+  };
+  const goHome = () => { setView("home"); setEditTx(null); setForm(blank); setActivePerson(null); setMonthFilter("all"); };
+
+  const exportData = () => {
+    const json = JSON.stringify(txs, null, 2);
+    const blob = new Blob([json], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "cuzdan-yedek.json"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importData = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (Array.isArray(data)) {
+          setTxs(data);
+          alert("✅ " + data.length + " kayıt başarıyla yüklendi!");
+        } else { alert("❌ Geçersiz dosya!"); }
+      } catch { alert("❌ Dosya okunamadı!"); }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const openPerson = (name) => {
+    setActivePerson(name);
+    setPersonTxFilter("all");
+    setPersonSearch("");
+    setView("person");
+  };
+
+  // Person detail page data
+  const pStats = activePerson ? personStats.find(p=>p.name===activePerson) : null;
+  const pTxs = activePerson
+    ? txs.filter(t=>t.person===activePerson && (personTxFilter==="all" || t.type===personTxFilter))
+        .filter(t=> personSearch.trim()==="" || (t.note||"").toLowerCase().includes(personSearch.toLowerCase()))
+        .sort((a,b)=>new Date(b.date)-new Date(a.date))
+    : [];
+  const pColor = activePerson ? PC[activePerson] : null;
+
+  return (
+    <div style={{minHeight:"100vh",background:"#0a0a0a",color:"#f0ede8",fontFamily:"'Nunito',sans-serif",maxWidth:430,margin:"0 auto",position:"relative",paddingBottom:90}}>
+
+      {/* ── HOME ── */}
+      {view==="home" && <div className="slide-up">
+        <div style={{padding:"52px 20px 16px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+            <div>
+              <div style={{fontSize:12,color:"#888",fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Mart 2026</div>
+              <div style={{fontSize:26,fontWeight:900,color:"#f0ede8"}}>Aile Cüzdanı 💰</div>
+            </div>
+            <div style={{display:"flex",gap:6}}>
+              <button className="btn" onClick={exportData}
+                style={{width:38,height:38,borderRadius:12,background:"#1a1a1a",color:"#5bc4f5",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}
+                title="Yedek Al">💾</button>
+              <label style={{width:38,height:38,borderRadius:12,background:"#1a1a1a",color:"#34d399",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}
+                title="Yedek Yükle">
+                📂<input type="file" accept=".json" onChange={importData} style={{display:"none"}}/>
+              </label>
+            </div>
+          </div>
+
+          {/* Master Balance */}
+          <div className="card" style={{padding:22,background:"linear-gradient(135deg,#1e1b4b,#2d1b69)",position:"relative",overflow:"hidden",marginBottom:12}}>
+            <div style={{position:"absolute",top:-20,right:-20,width:100,height:100,borderRadius:"50%",background:"rgba(167,139,250,0.1)"}}/>
+            <div style={{fontSize:11,color:"#a78bfa",fontWeight:700,marginBottom:4,letterSpacing:1}}>TOPLAM BAKİYE</div>
+            <div style={{fontSize:34,fontWeight:900,fontFamily:"'Space Mono',monospace",color:totalBalance>=0?"#c4b5fd":"#ff6b6b"}}>
+              {formatTRY(totalBalance)}
+            </div>
+            <div className="aud-badge" style={{marginTop:8,fontSize:13,padding:"4px 10px",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#e0f0ff"}}>
+              🇦🇺 {rateLoading?"...":formatAUD(toAUD(totalBalance))}
+            </div>
+            <div style={{display:"flex",gap:20,marginTop:18}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:10,color:"#a78bfa",fontWeight:700,marginBottom:2}}>TOPLAM GELİR</div>
+                <div style={{fontSize:15,fontWeight:800,color:"#34d399"}}>{formatTRY(totalIncome)}</div>
+                <div className="aud-badge" style={{marginTop:4,background:"rgba(255,255,255,0.08)",border:"none",color:"#a7f3d0"}}>🇦🇺 {formatAUD(toAUD(totalIncome))}</div>
+              </div>
+              <div style={{width:1,background:"rgba(255,255,255,0.1)"}}/>
+              <div style={{flex:1}}>
+                <div style={{fontSize:10,color:"#a78bfa",fontWeight:700,marginBottom:2}}>TOPLAM GİDER</div>
+                <div style={{fontSize:15,fontWeight:800,color:"#f87171"}}>{formatTRY(totalExpense)}</div>
+                <div className="aud-badge" style={{marginTop:4,background:"rgba(255,255,255,0.08)",border:"none",color:"#fca5a5"}}>🇦🇺 {formatAUD(toAUD(totalExpense))}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Rate bar */}
+          <div className="rate-bar" style={{marginBottom:0}}>
+            <span style={{fontSize:14}}>🇦🇺</span>
+            <span style={{fontSize:12,color:"#1a7abf",fontFamily:"'Space Mono',monospace",fontWeight:700}}>
+              1 ₺ = {rateLoading?"...":"A$"+rate.toFixed(4)}
+            </span>
+            <span style={{fontSize:11,color:"#666",flex:1}}>{rateErr?"⚠️ Tahmini kur":rateTime?"Güncellendi "+rateTime:""}</span>
+            <button className="btn" onClick={fetchRate} style={{fontSize:18,background:"none",color:"#1a7abf",padding:"2px 6px",borderRadius:8}}>
+              <span className={rateLoading?"spinning":""}>↻</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Person Cards — tıklanabilir */}
+        <div style={{padding:"16px 20px"}}>
+          <div style={{fontSize:12,fontWeight:800,color:"#888",marginBottom:10,letterSpacing:.5}}>KİŞİ BAZINDA ÖZET <span style={{fontWeight:600,color:"#666"}}>· detay için tıkla</span></div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {personStats.map(p => {
+              const c = PC[p.name];
+              const savePct = p.income > 0 ? Math.max(0, Math.min(100, Math.round((p.balance/p.income)*100))) : 0;
+              return (
+                <div key={p.name} className="person-card-clickable" onClick={()=>openPerson(p.name)}
+                  style={{background:"#1a1a1a", border:"1.5px solid #2a2a2a", boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+                    <div className="person-avatar" style={{width:42,height:42,background:"#2a2a2a",color:"#f0ede8",fontSize:17}}>
+                      {p.name[0]}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:16,fontWeight:800,color:"#f0ede8"}}>{p.name}</div>
+                      <div style={{fontSize:11,color:"#888",marginTop:1}}>Tasarruf: {savePct}%</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:18,fontWeight:900,fontFamily:"'Space Mono',monospace",color:p.balance>=0?"#059669":"#dc2626"}}>
+                        {formatTRY(p.balance)}
+                      </div>
+                      <div className="aud-badge" style={{marginTop:3}}>🇦🇺 {formatAUD(toAUD(p.balance))}</div>
+                    </div>
+                    <span style={{fontSize:16,color:"#666",marginLeft:4}}>›</span>
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <div style={{flex:1,background:"#0d2018",borderRadius:12,padding:"8px 10px"}}>
+                      <div style={{fontSize:10,color:"#888",fontWeight:700,marginBottom:2}}>GELİR</div>
+                      <div style={{fontSize:13,fontWeight:800,color:"#059669"}}>{formatTRY(p.income)}</div>
+                      <div className="aud-badge" style={{marginTop:3,fontSize:10}}>🇦🇺 {formatAUD(toAUD(p.income))}</div>
+                    </div>
+                    <div style={{flex:1,background:"#200d0d",borderRadius:12,padding:"8px 10px"}}>
+                      <div style={{fontSize:10,color:"#888",fontWeight:700,marginBottom:2}}>GİDER</div>
+                      <div style={{fontSize:13,fontWeight:800,color:"#dc2626"}}>{formatTRY(p.expense)}</div>
+                      <div className="aud-badge" style={{marginTop:3,fontSize:10}}>🇦🇺 {formatAUD(toAUD(p.expense))}</div>
+                    </div>
+                  </div>
+                  <div className="progress-bar" style={{marginTop:10}}>
+                    <div className="progress-fill" style={{width:`${savePct}%`,background:"#059669"}}/>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Aylık Özet Butonu */}
+        {(() => {
+          const monthMap = {};
+          txs.forEach(t => {
+            const d = new Date(t.date);
+            const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+            if (!monthMap[key]) monthMap[key] = { inc:0, exp:0 };
+            if (t.type==="income") monthMap[key].inc += t.amount;
+            else monthMap[key].exp += t.amount;
+          });
+          const months = Object.keys(monthMap).sort().reverse();
+          if (months.length === 0) return null;
+          const monthName = (key) => {
+            const [y, m] = key.split("-");
+            return new Date(y, m-1, 1).toLocaleDateString("tr-TR", { month:"long", year:"numeric" });
+          };
+          return (
+            <div style={{padding:"0 20px 20px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div style={{fontSize:12,fontWeight:800,color:"#888",letterSpacing:.5}}>AYLIK ÖZET</div>
+              </div>
+              <div className="card" style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:22}}>📅</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,fontWeight:700,color:"#f0ede8"}}>Ay seçerek özet görün</div>
+                  <div style={{fontSize:11,color:"#777",marginTop:2}}>{months.length} ay kayıtlı</div>
+                </div>
+                <select
+                  value=""
+                  onChange={e => { if(e.target.value) { setMonthFilter(e.target.value); setView("month"); } }}
+                  style={{background:"#7c3aed",border:"none",borderRadius:12,padding:"10px 14px",fontSize:13,fontWeight:700,color:"#ffffff",cursor:"pointer",appearance:"none",WebkitAppearance:"none"}}>
+                  <option value="" disabled>Ay Seç ▾</option>
+                  {months.map(k => (
+                    <option key={k} value={k}>{monthName(k)}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          );
+        })()}
+      </div>}
+
+      {/* ── AYLIK ÖZET SAYFASI ── */}
+      {view==="month" && monthFilter && (() => {
+        const monthName = (key) => {
+          const [y, m] = key.split("-");
+          return new Date(y, m-1, 1).toLocaleDateString("tr-TR", { month:"long", year:"numeric" });
+        };
+        const inc = txs.filter(t=>t.type==="income" && new Date(t.date).toISOString().slice(0,7)===monthFilter).reduce((s,t)=>s+t.amount,0);
+        const exp = txs.filter(t=>t.type==="expense" && new Date(t.date).toISOString().slice(0,7)===monthFilter).reduce((s,t)=>s+t.amount,0);
+        const bal = inc - exp;
+        const maxVal = Math.max(inc, exp) || 1;
+        return (
+          <div className="slide-up" style={{paddingBottom:20}}>
+            {/* Header */}
+            <div style={{background:"#0a0a0a",padding:"52px 20px 24px",borderBottom:"2px solid #2a2a2a"}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+                <button className="btn" onClick={goHome}
+                  style={{width:40,height:40,borderRadius:12,background:"#1a1a1a",color:"#f0ede8",fontSize:18,boxShadow:"0 1px 6px rgba(0,0,0,0.1)"}}>←</button>
+                <div style={{fontSize:22,fontWeight:900,color:"#f0ede8"}}>📅 {monthName(monthFilter)}</div>
+              </div>
+
+              {/* Toplam bakiye */}
+              <div className="card" style={{padding:18,background:"linear-gradient(135deg,#1e1b4b,#2d1b69)",marginBottom:0}}>
+                <div style={{fontSize:11,color:"#a78bfa",fontWeight:700,marginBottom:4,letterSpacing:1}}>AY BAKİYESİ</div>
+                <div style={{fontSize:30,fontWeight:900,fontFamily:"'Space Mono',monospace",color:bal>=0?"#34d399":"#f87171"}}>{formatTRY(bal)}</div>
+                <div className="aud-badge" style={{marginTop:6,background:"rgba(255,255,255,0.1)",border:"none",color:"#e0f0ff"}}>🇦🇺 {formatAUD(toAUD(bal))}</div>
+                <div style={{display:"flex",gap:16,marginTop:14}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:"#a78bfa",fontWeight:700,marginBottom:2}}>GELİR</div>
+                    <div style={{fontSize:15,fontWeight:800,color:"#34d399"}}>{formatTRY(inc)}</div>
+                    <div className="aud-badge" style={{marginTop:3,background:"rgba(255,255,255,0.08)",border:"none",color:"#a7f3d0"}}>🇦🇺 {formatAUD(toAUD(inc))}</div>
+                  </div>
+                  <div style={{width:1,background:"rgba(255,255,255,0.1)"}}/>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:"#a78bfa",fontWeight:700,marginBottom:2}}>GİDER</div>
+                    <div style={{fontSize:15,fontWeight:800,color:"#f87171"}}>{formatTRY(exp)}</div>
+                    <div className="aud-badge" style={{marginTop:3,background:"rgba(255,255,255,0.08)",border:"none",color:"#fca5a5"}}>🇦🇺 {formatAUD(toAUD(exp))}</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:5,marginTop:14}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:10,color:"#34d399",fontWeight:700,width:28}}>GEL</span>
+                    <div style={{flex:1,height:6,background:"rgba(255,255,255,0.15)",borderRadius:99,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${(inc/maxVal)*100}%`,background:"#34d399",borderRadius:99}}/>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:10,color:"#f87171",fontWeight:700,width:28}}>GİD</span>
+                    <div style={{flex:1,height:6,background:"rgba(255,255,255,0.15)",borderRadius:99,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${(exp/maxVal)*100}%`,background:"#f87171",borderRadius:99}}/>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Kişi bazında */}
+            <div style={{padding:"16px 20px"}}>
+              <div style={{fontSize:12,fontWeight:800,color:"#888",letterSpacing:.5,marginBottom:10}}>KİŞİ BAZINDA</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {PEOPLE.map(pName => {
+                  const pInc = txs.filter(t=>t.person===pName && t.type==="income" && new Date(t.date).toISOString().slice(0,7)===monthFilter).reduce((s,t)=>s+t.amount,0);
+                  const pExp = txs.filter(t=>t.person===pName && t.type==="expense" && new Date(t.date).toISOString().slice(0,7)===monthFilter).reduce((s,t)=>s+t.amount,0);
+                  if (pInc===0 && pExp===0) return null;
+                  const pBal = pInc - pExp;
+                  return (
+                    <div key={pName} className="card" style={{padding:"14px 16px"}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          <div style={{width:36,height:36,borderRadius:"50%",background:"#2a2a2a",color:"#f0ede8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:900}}>
+                            {pName[0]}
+                          </div>
+                          <span style={{fontSize:16,fontWeight:800,color:"#f0ede8"}}>{pName}</span>
+                        </div>
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontSize:16,fontWeight:900,fontFamily:"'Space Mono',monospace",color:pBal>=0?"#059669":"#dc2626"}}>{formatTRY(pBal)}</div>
+                          <div className="aud-badge" style={{marginTop:2}}>🇦🇺 {formatAUD(toAUD(pBal))}</div>
+                        </div>
+                      </div>
+                      <div style={{display:"flex",gap:8}}>
+                        {pInc>0 && <div style={{flex:1,background:"#0d2018",borderRadius:10,padding:"8px 10px"}}>
+                          <div style={{fontSize:10,color:"#888",fontWeight:700}}>GELİR</div>
+                          <div style={{fontSize:13,fontWeight:800,color:"#059669"}}>{formatTRY(pInc)}</div>
+                          <div className="aud-badge" style={{marginTop:2,fontSize:10}}>🇦🇺 {formatAUD(toAUD(pInc))}</div>
+                        </div>}
+                        {pExp>0 && <div style={{flex:1,background:"#200d0d",borderRadius:10,padding:"8px 10px"}}>
+                          <div style={{fontSize:10,color:"#888",fontWeight:700}}>GİDER</div>
+                          <div style={{fontSize:13,fontWeight:800,color:"#dc2626"}}>{formatTRY(pExp)}</div>
+                          <div className="aud-badge" style={{marginTop:2,fontSize:10}}>🇦🇺 {formatAUD(toAUD(pExp))}</div>
+                        </div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── KİŞİ DETAY SAYFASI ── */}
+      {view==="person" && activePerson && pStats && (
+        <div className="slide-up" style={{paddingBottom:20}}>
+          {/* Header */}
+          <div style={{background:"#0a0a0a",padding:"52px 20px 24px",borderBottom:"2px solid #2a2a2a"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+              <button className="btn" onClick={goHome}
+                style={{width:40,height:40,borderRadius:12,background:"#1a1a1a",color:"#f0ede8",fontSize:18,boxShadow:"0 1px 6px rgba(0,0,0,0.1)"}}>←</button>
+              <div className="person-avatar" style={{width:48,height:48,background:"#2a2a2a",color:"#f0ede8",fontSize:20}}>
+                {activePerson[0]}
+              </div>
+              <div>
+                <div style={{fontSize:22,fontWeight:900,color:"#f0ede8"}}>{activePerson}</div>
+                <div style={{fontSize:12,color:"#888"}}>{pTxs.length} işlem</div>
+              </div>
+            </div>
+
+            {/* Donut + stats */}
+            <div style={{display:"flex",alignItems:"center",gap:16}}>
+              <DonutChart income={pStats.income} expense={pStats.expense} color={pColor.accent}/>
+              <div style={{flex:1}}>
+                <div style={{marginBottom:10}}>
+                  <div style={{fontSize:11,color:"#888",fontWeight:700}}>BAKİYE</div>
+                  <div style={{fontSize:26,fontWeight:900,fontFamily:"'Space Mono',monospace",color:pStats.balance>=0?"#059669":"#dc2626"}}>
+                    {formatTRY(pStats.balance)}
+                  </div>
+                  <div className="aud-badge" style={{marginTop:4}}>🇦🇺 {formatAUD(toAUD(pStats.balance))}</div>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:"#888",fontWeight:700}}>GELİR</div>
+                    <div style={{fontSize:14,fontWeight:800,color:"#059669"}}>{formatTRY(pStats.income)}</div>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:"#888",fontWeight:700}}>GİDER</div>
+                    <div style={{fontSize:14,fontWeight:800,color:"#dc2626"}}>{formatTRY(pStats.expense)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div style={{display:"flex",gap:16,marginTop:12}}>
+              <div style={{display:"flex",alignItems:"center",gap:5}}>
+                <div style={{width:10,height:10,borderRadius:"50%",background:"#34d399"}}/>
+                <span style={{fontSize:11,color:"#888"}}>Gelir</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:5}}>
+                <div style={{width:10,height:10,borderRadius:"50%",background:"#f87171"}}/>
+                <span style={{fontSize:11,color:"#888"}}>Gider</span>
+              </div>
+            </div>
+          </div>
+
+          {/* İşlem listesi */}
+          <div style={{padding:"16px 20px"}}>
+
+          {/* Aylık Özet */}
+          {(() => {
+            const allPersonTxs = txs.filter(t=>t.person===activePerson);
+            const monthMap = {};
+            allPersonTxs.forEach(t => {
+              const d = new Date(t.date);
+              const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+              if (!monthMap[key]) monthMap[key] = { inc:0, exp:0 };
+              if (t.type==="income") monthMap[key].inc += t.amount;
+              else monthMap[key].exp += t.amount;
+            });
+            const months = Object.keys(monthMap).sort().reverse();
+            if (months.length === 0) return null;
+            const monthName = (key) => {
+              const [y, m] = key.split("-");
+              return new Date(y, m-1, 1).toLocaleDateString("tr-TR", { month:"long", year:"numeric" });
+            };
+            return (
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:12,fontWeight:800,color:"#888",letterSpacing:.5,marginBottom:8}}>AYLIK ÖZET</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {months.map(key => {
+                    const { inc, exp } = monthMap[key];
+                    const bal = inc - exp;
+                    const maxVal = Math.max(inc, exp) || 1;
+                    return (
+                      <div key={key} style={{background:"#1a1a1a",borderRadius:14,padding:"12px 14px",boxShadow:"0 1px 6px rgba(0,0,0,0.4)"}}>
+                        <div style={{fontSize:12,fontWeight:800,color:"#f0ede8",marginBottom:8}}>{monthName(key)}</div>
+                        <div style={{display:"flex",gap:8,marginBottom:8}}>
+                          <div style={{flex:1,background:"#0d2018",borderRadius:10,padding:"7px 10px"}}>
+                            <div style={{fontSize:10,color:"#888",fontWeight:700}}>GELİR</div>
+                            <div style={{fontSize:13,fontWeight:800,color:"#059669"}}>{formatTRY(inc)}</div>
+                            <div className="aud-badge" style={{marginTop:2,fontSize:10}}>🇦🇺 {formatAUD(toAUD(inc))}</div>
+                          </div>
+                          <div style={{flex:1,background:"#200d0d",borderRadius:10,padding:"7px 10px"}}>
+                            <div style={{fontSize:10,color:"#888",fontWeight:700}}>GİDER</div>
+                            <div style={{fontSize:13,fontWeight:800,color:"#dc2626"}}>{formatTRY(exp)}</div>
+                            <div className="aud-badge" style={{marginTop:2,fontSize:10}}>🇦🇺 {formatAUD(toAUD(exp))}</div>
+                          </div>
+                          <div style={{flex:1,background:bal>=0?"#f5f3ff":"#fff1f2",borderRadius:10,padding:"7px 10px"}}>
+                            <div style={{fontSize:10,color:"#888",fontWeight:700}}>BAKİYE</div>
+                            <div style={{fontSize:13,fontWeight:800,color:bal>=0?"#059669":"#dc2626"}}>{formatTRY(bal)}</div>
+                            <div className="aud-badge" style={{marginTop:2,fontSize:10}}>🇦🇺 {formatAUD(toAUD(bal))}</div>
+                          </div>
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <span style={{fontSize:10,color:"#059669",fontWeight:700,width:32}}>GEL</span>
+                            <div style={{flex:1,height:6,background:"#e8eaf0",borderRadius:99,overflow:"hidden"}}>
+                              <div style={{height:"100%",width:`${(inc/maxVal)*100}%`,background:"#34d399",borderRadius:99}}/>
+                            </div>
+                          </div>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <span style={{fontSize:10,color:"#dc2626",fontWeight:700,width:32}}>GİD</span>
+                            <div style={{flex:1,height:6,background:"#e8eaf0",borderRadius:99,overflow:"hidden"}}>
+                              <div style={{height:"100%",width:`${(exp/maxVal)*100}%`,background:"#f87171",borderRadius:99}}/>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+            {/* Arama kutusu */}
+          <div style={{display:"flex",alignItems:"center",gap:10,background:"#1a1a1a",borderRadius:14,padding:"10px 14px",marginBottom:personSearch?8:12,boxShadow:"0 1px 6px rgba(0,0,0,0.4)"}}>
+            <span style={{fontSize:16,color:"#666"}}>🔍</span>
+            <input
+              placeholder="Açıklamada ara..."
+              value={personSearch}
+              onChange={e=>setPersonSearch(e.target.value)}
+              style={{flex:1,fontSize:15,fontFamily:"'Nunito',sans-serif",fontWeight:600,color:"#f0ede8",background:"none"}}
+            />
+            {personSearch && (
+              <button className="btn" onClick={()=>setPersonSearch("")}
+                style={{fontSize:14,color:"#666",background:"none",padding:"2px 6px",borderRadius:8}}>✕</button>
+            )}
+          </div>
+
+          {/* Arama sonuç özeti */}
+          {personSearch.trim()!=="" && pTxs.length>0 && (() => {
+            const sInc = pTxs.filter(t=>t.type==="income").reduce((s,t)=>s+t.amount,0);
+            const sExp = pTxs.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount,0);
+            const sBal = sInc - sExp;
+            return (
+              <div style={{background:"#0a0a0a",border:"1.5px solid #2a2a2a",borderRadius:14,padding:"12px 14px",marginBottom:12}}>
+                <div style={{fontSize:11,color:"#888",fontWeight:700,marginBottom:8}}>
+                  🔍 "{personSearch}" — {pTxs.length} sonuç
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  {sInc>0 && <div style={{flex:1,background:"rgba(255,255,255,0.05)",borderRadius:10,padding:"7px 10px"}}>
+                    <div style={{fontSize:10,color:"#888",fontWeight:700}}>GELİR</div>
+                    <div style={{fontSize:13,fontWeight:800,color:"#059669"}}>{formatTRY(sInc)}</div>
+                    <div className="aud-badge" style={{marginTop:2,fontSize:10}}>🇦🇺 {formatAUD(toAUD(sInc))}</div>
+                  </div>}
+                  {sExp>0 && <div style={{flex:1,background:"rgba(255,255,255,0.05)",borderRadius:10,padding:"7px 10px"}}>
+                    <div style={{fontSize:10,color:"#888",fontWeight:700}}>GİDER</div>
+                    <div style={{fontSize:13,fontWeight:800,color:"#dc2626"}}>{formatTRY(sExp)}</div>
+                    <div className="aud-badge" style={{marginTop:2,fontSize:10}}>🇦🇺 {formatAUD(toAUD(sExp))}</div>
+                  </div>}
+                  <div style={{flex:1,background:"rgba(255,255,255,0.05)",borderRadius:10,padding:"7px 10px"}}>
+                    <div style={{fontSize:10,color:"#888",fontWeight:700}}>TOPLAM</div>
+                    <div style={{fontSize:13,fontWeight:800,color:sBal>=0?"#059669":"#dc2626"}}>{formatTRY(sBal)}</div>
+                    <div className="aud-badge" style={{marginTop:2,fontSize:10}}>🇦🇺 {formatAUD(toAUD(sBal))}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:12,fontWeight:800,color:"#888",letterSpacing:.5}}>İŞLEMLER</div>
+              <div style={{display:"flex",gap:5}}>
+                {["all","income","expense"].map(f=>(
+                  <button key={f} className="chip btn" onClick={()=>setPersonTxFilter(f)}
+                    style={{background:personTxFilter===f?"#1a1a2e":"#ebebf5",color:personTxFilter===f?"#fff":"#888",fontSize:11,padding:"5px 11px"}}>
+                    {f==="all"?"Tümü":f==="income"?"Gelir":"Gider"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              {pTxs.length===0 && <div style={{textAlign:"center",padding:40,color:"#ccc"}}>
+                {personSearch ? `"${personSearch}" için sonuç bulunamadı` : "Henüz işlem yok"}
+              </div>}
+              {pTxs.map(t=>(
+                <div key={t.id} className="tx-row card" onClick={()=>setDetailTx(t)} style={{marginBottom:2}}>
+                  <div style={{width:42,height:42,borderRadius:13,background:t.type==="income"?"#d1fae5":"#fee2e2",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                    {t.type==="income"?"💚":"🔴"}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:14,color:"#f0ede8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                      {t.note||"Not yok"}
+                    </div>
+                    <div style={{fontSize:11,color:"#777",marginTop:1}}>{formatDate(t.date)}</div>
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <div style={{fontWeight:800,fontFamily:"'Space Mono',monospace",fontSize:14,color:t.type==="income"?"#059669":"#dc2626"}}>
+                      {t.type==="income"?"+":"-"}{formatTRY(t.amount)}
+                    </div>
+                    <div className="aud-badge" style={{marginTop:3}}>🇦🇺 {formatAUD(toAUD(t.amount))}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── İŞLEM EKLE / DÜZENLE ── */}
+      {view==="add" && (
+        <div className="slide-up" style={{padding:"52px 20px 20px",background:"#0a0a0a",minHeight:"100vh"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+            <button className="btn" onClick={goHome}
+              style={{width:40,height:40,borderRadius:12,background:"#1a1a1a",color:"#f0ede8",fontSize:18,boxShadow:"0 1px 6px rgba(0,0,0,0.1)"}}>←</button>
+            <h2 style={{fontSize:20,fontWeight:900,color:"#f0ede8"}}>{editTx?"İşlemi Düzenle":"Yeni İşlem"}</h2>
+          </div>
+
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:12,color:"#888",fontWeight:700,marginBottom:8,letterSpacing:.5}}>KİŞİ SEÇ</div>
+            <div style={{display:"flex",gap:8}}>
+              {PEOPLE.map(p => {
+                const c = PC[p];
+                const sel = form.person===p;
+                return (
+                  <button key={p} className="btn" onClick={()=>setForm(f=>({...f,person:p}))}
+                    style={{flex:1,padding:"13px 6px",borderRadius:14,background:sel?c.bg:"#ebebf5",color:sel?c.accent:"#888",border:`2px solid ${sel?c.accent:"transparent"}`,fontSize:15,fontWeight:800}}>
+                    {p}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{display:"flex",background:"#2a2a2a",borderRadius:16,padding:4,marginBottom:16}}>
+            {["expense","income"].map(t=>(
+              <button key={t} className="btn" onClick={()=>setForm(f=>({...f,type:t}))}
+                style={{flex:1,padding:"11px",borderRadius:12,fontSize:14,
+                  background:form.type===t?(t==="income"?"#d1fae5":"#fee2e2"):"none",
+                  color:form.type===t?(t==="income"?"#059669":"#dc2626"):"#888"}}>
+                {t==="income"?"💚 Gelir":"🔴 Gider"}
+              </button>
+            ))}
+          </div>
+
+          <div style={{background:"#1a1a1a",borderRadius:20,padding:18,marginBottom:12,textAlign:"center",boxShadow:"0 1px 8px rgba(0,0,0,0.07)"}}>
+            <div style={{fontSize:12,color:"#666",marginBottom:6}}>TUTAR (₺)</div>
+            <input className="input-field" type="number" inputMode="decimal" placeholder="0"
+              value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))}
+              style={{textAlign:"center",fontSize:38,fontWeight:900,fontFamily:"'Space Mono',monospace",background:"none",margin:0,padding:0,width:"100%",color:form.type==="income"?"#059669":"#dc2626"}}/>
+            {form.amount && parseFloat(form.amount)>0 && (
+              <div style={{marginTop:8}}>
+                <span className="aud-badge" style={{fontSize:14,padding:"5px 12px"}}>🇦🇺 {formatAUD(toAUD(parseFloat(form.amount)))}</span>
+                <div style={{fontSize:11,color:"#666",marginTop:4}}>1 ₺ = A${rate.toFixed(4)}</div>
+              </div>
+            )}
+          </div>
+
+          <input className="input-field" placeholder="Açıklama (kira, maaş, market...)"
+            value={form.note} onChange={e=>setForm(f=>({...f,note:e.target.value}))}/>
+          <input className="input-field" type="date" value={form.date}
+            onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={{colorScheme:"dark"}}/>
+
+          <button className="btn" onClick={submit}
+            style={{width:"100%",padding:"16px",borderRadius:18,fontSize:16,marginTop:8,
+              background:form.type==="income"?"linear-gradient(135deg,#059669,#34d399)":"linear-gradient(135deg,#dc2626,#f87171)",
+              color:"#ffffff"}}>
+            {editTx?"✓ Güncelle":(form.type==="income"?"↑ Gelir Ekle":"↓ Gider Ekle")}
+          </button>
+        </div>
+      )}
+
+      {/* ── İŞLEM DETAY MODAL ── */}
+      {detailTx && (() => {
+        const c = PC[detailTx.person];
+        return (
+          <div className="modal-overlay" onClick={()=>setDetailTx(null)}>
+            <div className="modal-content" onClick={e=>e.stopPropagation()}>
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:20}}>
+                <div className="person-avatar" style={{width:52,height:52,borderRadius:16,background:c.avatar,color:c.avatarText,fontSize:22}}>
+                  {detailTx.person[0]}
+                </div>
+                <div>
+                  <div style={{fontSize:18,fontWeight:800,color:c.accent}}>{detailTx.person}</div>
+                  <div style={{fontSize:12,color:"#777"}}>{formatDate(detailTx.date)} · {detailTx.type==="income"?"Gelir":"Gider"}</div>
+                </div>
+              </div>
+              <div style={{background:"#0a0a0a",borderRadius:16,padding:16,marginBottom:14}}>
+                <div style={{fontSize:12,color:"#666",marginBottom:4}}>Tutar</div>
+                <div style={{fontSize:28,fontWeight:900,fontFamily:"'Space Mono',monospace",color:detailTx.type==="income"?"#059669":"#dc2626"}}>
+                  {detailTx.type==="income"?"+":"-"}{formatTRY(detailTx.amount)}
+                </div>
+                <div className="aud-badge" style={{marginTop:8,fontSize:14,padding:"5px 12px"}}>
+                  🇦🇺 {formatAUD(toAUD(detailTx.amount))}
+                </div>
+              </div>
+              {detailTx.note && <div style={{background:"#0a0a0a",borderRadius:14,padding:"12px 14px",marginBottom:14,fontSize:14,color:"#888"}}>📝 {detailTx.note}</div>}
+              <div style={{display:"flex",gap:10}}>
+                <button className="btn" onClick={()=>openEdit(detailTx)}
+                  style={{flex:1,padding:"14px",borderRadius:14,background:"#1a1030",color:"#7c3aed",fontSize:15}}>✏️ Düzenle</button>
+                <button className="btn" onClick={()=>removeTx(detailTx.id)}
+                  style={{flex:1,padding:"14px",borderRadius:14,background:"#200a0a",color:"#dc2626",fontSize:15}}>🗑 Sil</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── BOTTOM NAV ── */}
+      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"#1a1a1a",borderTop:"1px solid #2a2a2a",boxShadow:"0 -2px 12px rgba(0,0,0,0.06)",display:"flex",justifyContent:"space-around",padding:"8px 0 20px",zIndex:100}}>
+        <button className="nav-btn" onClick={goHome}>
+          <span style={{fontSize:20}}>🏠</span>
+          <span style={{fontSize:10,fontWeight:700,color:(view==="home"||view==="person")?"#7c3aed":"#aaa"}}>Ana Sayfa</span>
+        </button>
+        <button className="nav-btn" onClick={openAdd} style={{position:"relative",top:-10}}>
+          <div style={{width:54,height:54,borderRadius:"50%",background:"linear-gradient(135deg,#7c3aed,#a78bfa)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,boxShadow:"0 4px 20px rgba(124,58,237,0.5)"}}>+</div>
+        </button>
+        <button className="nav-btn" onClick={fetchRate}>
+          <span style={{fontSize:20}} className={rateLoading?"spinning":""}>↻</span>
+          <span style={{fontSize:10,fontWeight:700,color:"#777"}}>Kur Güncelle</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
